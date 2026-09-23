@@ -51,6 +51,12 @@ header.top .causa{color:var(--muted);font-size:.95rem;margin-top:10px;max-width:
 .prog-bar>i{display:block;height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,var(--gold-deep),var(--gold));transition:width .6s ease}
 /* Grilla números */
 .grid-sec{margin:26px 0}
+.pasos{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:0 auto 22px;max-width:640px}
+@media(max-width:560px){.pasos{grid-template-columns:1fr}}
+.paso{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 12px;text-align:center}
+.paso .pn{width:30px;height:30px;margin:0 auto 8px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--cyan));color:#04101f;font-family:'Space Grotesk';font-weight:700;display:grid;place-items:center;font-size:.95rem}
+.paso .pt{font-size:.82rem;color:var(--muted);line-height:1.4}
+.paso .pt b{color:var(--text)}
 .grid-sec h2{font-family:'Space Grotesk';font-size:1.2rem;margin-bottom:6px;text-align:center}
 .grid-legend{display:flex;gap:16px;justify-content:center;margin:12px 0 18px;flex-wrap:wrap;font-size:.82rem;color:var(--muted)}
 .grid-legend span{display:inline-flex;align-items:center;gap:7px}
@@ -66,6 +72,7 @@ header.top .causa{color:var(--muted);font-size:.95rem;margin-top:10px;max-width:
 .num.vendido{background:var(--danger);border-color:var(--danger);color:#fff;cursor:not-allowed;opacity:.85}
 .num.seleccionado{background:linear-gradient(135deg,var(--blue),var(--cyan));border-color:var(--cyan);color:#04101f}
 .num.reservado{background:linear-gradient(135deg,var(--gold-deep),var(--gold));border-color:var(--gold);color:#2a1800}
+.num.pendiente{background:linear-gradient(135deg,#c77b1a,#e8a13d);border-color:#e8a13d;color:#2a1800}
 .loading{text-align:center;color:var(--muted);padding:30px;font-size:.9rem}
 /* Modal */
 .modal-bg{position:fixed;inset:0;background:rgba(3,7,15,.8);backdrop-filter:blur(4px);display:none;place-items:center;z-index:100;padding:18px}
@@ -125,11 +132,16 @@ header.top .causa{color:var(--muted);font-size:.95rem;margin-top:10px;max-width:
   </div>
 
   <div class="grid-sec">
-    <h2>Elige tu número de la suerte 🍀</h2>
+    <h2>¿Cómo participar? Es muy fácil 👇</h2>
+    <div class="pasos">
+      <div class="paso"><div class="pn">1</div><div class="pt"><b>Pulsa un número</b> disponible y deja tus datos (para contactarte)</div></div>
+      <div class="paso"><div class="pn">2</div><div class="pt">Dale al botón <b>"Notificar mi número"</b> para avisarnos por WhatsApp</div></div>
+      <div class="paso"><div class="pn">3</div><div class="pt"><b>Transfiere $3</b> y envía tu comprobante. ¡Listo, ya participas! 🎉</div></div>
+    </div>
+    <h2 style="margin-top:8px">Elige tu número de la suerte 🍀</h2>
     <div class="grid-legend">
       <span><i class="dot libre"></i> Disponible</span>
-      <span><i class="dot mio" style="background:linear-gradient(135deg,var(--gold-deep),var(--gold))"></i> Tu número (reservado)</span>
-      <span><i class="dot vendido"></i> Vendido</span>
+      <span><i class="dot vendido"></i> Ocupado</span>
     </div>
     <div id="adminZone"></div>
     <div id="numerosBox"><div class="loading">Cargando números... ⏳</div></div>
@@ -212,14 +224,19 @@ function renderGrilla(){
   box.className = '';
   const misReservas = JSON.parse(localStorage.getItem('rifa_wilmer_mis') || '[]');
   box.innerHTML = '<div class="numeros">' + numeros.map(n => {
-    const vendido = n.estado === 'vendido';
-    const reservado = n.estado === 'reservado';
-    const esMio = misReservas.includes(n.numero);
+    const ocupado = (n.estado === 'vendido' || n.estado === 'reservado' || n.estado === 'pendiente');
     let cls = 'num';
-    if (vendido) cls += ' vendido';
-    else if (esMio) cls += ' reservado';
-    if (ES_ADMIN && !vendido) cls += ' libre-admin';
-    return `<button class="${cls}" data-num="${n.numero}" ${vendido && !ES_ADMIN ? 'disabled' : ''}>${n.numero}</button>`;
+    if (ES_ADMIN){
+      // El admin ve los matices: vendido=rojo, pendiente=naranja, reservado=amarillo
+      if (n.estado === 'vendido') cls += ' vendido';
+      else if (n.estado === 'pendiente') cls += ' pendiente';
+      else if (n.estado === 'reservado') cls += ' reservado';
+      if (n.estado !== 'vendido') cls += ' libre-admin';
+    } else {
+      // El público: cualquier ocupado se ve rojo y NO se puede elegir
+      if (ocupado) cls += ' vendido';
+    }
+    return `<button class="${cls}" data-num="${n.numero}" ${ocupado && !ES_ADMIN ? 'disabled' : ''}>${n.numero}</button>`;
   }).join('') + '</div>';
 
   box.querySelectorAll('.num').forEach(btn => {
@@ -227,7 +244,7 @@ function renderGrilla(){
       const num = parseInt(btn.dataset.num);
       const registro = numeros.find(x => x.numero === num);
       if (ES_ADMIN) abrirAdmin(registro);
-      else if (registro.estado !== 'vendido') abrirReserva(num);
+      else if (registro.estado === 'libre') abrirReserva(num);
     };
   });
 }
@@ -289,7 +306,8 @@ function mostrarPago(num, nombre){
       <div class="pago-row"><span class="lbl">Monto</span><span class="v">$${PRECIO}.00</span></div>
       <div class="pago-row"><span class="lbl">Enviar comprobante</span><span class="v">${WHATSAPP} <button class="copy-btn" onclick="copiar('${WHATSAPP}',this)">Copiar</button></span></div>
     </div>
-    <div class="btns" style="margin-top:16px">
+    <div class="callout" style="margin-top:14px;font-size:.82rem">👇 <b>Importante:</b> pulsa el botón para avisarnos tu número por WhatsApp. Sin esto, no sabremos que apartaste el número.</div>
+    <div class="btns" style="margin-top:12px">
       <a class="btn btn-gold" style="text-decoration:none;text-align:center;line-height:1.4" href="https://wa.me/${WHATSAPP}?text=${encodeURIComponent('¡Hola! 🔱 Quiero apartar el número '+num+' de la Rifa Solidaria de Wilmer. Ya te envío mi comprobante en cuanto haga la transferencia 🙏')}" target="_blank">📲 Notificar mi número seleccionado</a>
     </div>
     <div class="btns"><button class="btn btn-ghost" onclick="cerrarModal()">Cerrar</button></div>`;
@@ -315,6 +333,7 @@ function abrirAdmin(reg){
     </div>
     <div class="admin-actions">
       ${reg.estado !== 'vendido' ? `<button class="btn btn-ok" onclick="marcar(${reg.numero},'vendido')">✓ Marcar PAGADO</button>` : ''}
+      ${reg.estado !== 'pendiente' && reg.estado !== 'vendido' ? `<button class="btn" style="background:linear-gradient(135deg,#c77b1a,#e8a13d);color:#2a1800" onclick="marcarPendiente(${reg.numero})">⏳ Pendiente de pago</button>` : ''}
       ${reg.estado !== 'libre' ? `<button class="btn btn-red" onclick="marcar(${reg.numero},'libre')">Liberar número</button>` : ''}
       <button class="btn btn-ghost" onclick="cerrarModal()">Cerrar</button>
     </div>`;
@@ -329,6 +348,21 @@ async function marcar(num, estado){
   await cargarNumeros();
 }
 
+async function marcarPendiente(num){
+  const reg = numeros.find(x => x.numero === num);
+  let nombre = reg.nombre, telefono = reg.telefono;
+  // Si no tiene datos (número libre que el admin aparta manual), pedirlos
+  if (!nombre){
+    nombre = prompt('Nombre de la persona que aparta el N° '+num+':');
+    if (!nombre) return;
+    telefono = prompt('WhatsApp de '+nombre+' (opcional):') || '';
+  }
+  const { error } = await sb.from(TABLA).update({ estado:'pendiente', nombre:nombre, telefono:telefono }).eq('numero', num);
+  if (error){ alert('Error: '+error.message); return; }
+  cerrarModal();
+  await cargarNumeros();
+}
+
 function cerrarModal(){ document.getElementById('modalBg').classList.remove('show'); }
 document.getElementById('modalBg').addEventListener('click', e => { if (e.target.id === 'modalBg') cerrarModal(); });
 
@@ -336,13 +370,17 @@ document.getElementById('modalBg').addEventListener('click', e => { if (e.target
 if (ES_ADMIN){
   const z = document.getElementById('adminZone');
   z.innerHTML = `<div class="admin-badge">🔑 MODO ADMIN — Ves los datos de cada número. Toca un número para gestionar.
-    <div class="admin-actions" style="justify-content:center">
-      <button class="btn btn-gold" id="btnSortear">🎲 Sortear ganador (entre pagados)</button>
-      <button class="btn btn-ghost" id="btnVerVendidos">Ver lista de pagados</button>
+    <div class="admin-actions" style="justify-content:center;flex-wrap:wrap">
+      <button class="btn btn-gold" id="btnSortear">🎲 Sortear ganador</button>
+      <button class="btn btn-ghost" id="btnVerVendidos">✓ Pagados</button>
+      <button class="btn btn-ghost" id="btnVerPendientes">⏳ Pendientes</button>
+      <button class="btn btn-ghost" id="btnExcel">📥 Descargar Excel</button>
     </div></div>`;
   setTimeout(()=>{
     document.getElementById('btnSortear').onclick = sortear;
     document.getElementById('btnVerVendidos').onclick = verVendidos;
+    document.getElementById('btnVerPendientes').onclick = verPendientes;
+    document.getElementById('btnExcel').onclick = descargarExcel;
   }, 100);
 }
 
@@ -381,6 +419,35 @@ function verVendidos(){
     </div>
     <div class="btns" style="margin-top:14px"><button class="btn btn-ghost" onclick="cerrarModal()">Cerrar</button></div>`;
   document.getElementById('modalBg').classList.add('show');
+}
+
+function verPendientes(){
+  const pend = numeros.filter(n => n.estado === 'pendiente');
+  const m = document.getElementById('modalContent');
+  m.innerHTML = `<h3 style="color:#e8a13d">⏳ Pendientes de pago (${pend.length})</h3>
+    <div class="pago-box" style="max-height:340px;overflow:auto;margin-top:10px">
+    ${pend.length ? pend.map(p=>`<div class="pago-row"><span class="v">N°${p.numero}</span><span class="lbl">${p.nombre||'—'} · ${p.telefono||'—'}</span></div>`).join('') : '<div class="pago-row"><span class="lbl">No hay pendientes</span></div>'}
+    </div>
+    <div class="btns" style="margin-top:14px"><button class="btn btn-ghost" onclick="cerrarModal()">Cerrar</button></div>`;
+  document.getElementById('modalBg').classList.add('show');
+}
+
+function descargarExcel(){
+  // Genera un CSV (se abre en Excel) con todos los números que tienen datos
+  const conDatos = numeros.filter(n => n.nombre || n.estado !== 'libre');
+  let csv = 'Numero,Nombre,WhatsApp,Estado\n';
+  numeros.forEach(n => {
+    const estado = n.estado === 'vendido' ? 'PAGADO' : (n.estado === 'pendiente' ? 'PENDIENTE' : (n.estado === 'reservado' ? 'Reservado' : 'Libre'));
+    const nombre = (n.nombre||'').replace(/,/g,' ');
+    const tel = (n.telefono||'').replace(/,/g,' ');
+    csv += `${n.numero},${nombre},${tel},${estado}\n`;
+  });
+  const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'rifa-wilmer-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // INIT
